@@ -1,8 +1,8 @@
 import { defineConfig, loadEnv, type Connect } from 'vite'
 import react from '@vitejs/plugin-react'
 import Anthropic from '@anthropic-ai/sdk'
+import { CHAT_MODEL } from './src/chat/chatModel'
 
-const CHAT_MODEL = 'claude-opus-4-8'
 const CHAT_SYSTEM_PROMPT =
   'You are Halo Assistant, a friendly in-app AI assistant embedded in Halo, a project/task ' +
   'management SaaS demo. Help the user with questions about tasks, projects, and general ' +
