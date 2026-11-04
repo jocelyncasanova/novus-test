@@ -17,8 +17,8 @@
  * failure so the user can retry. Plaintext password lives in sessionStorage
  * until clearWizardDraft runs — mitigation of T-02-17 from the threat model.
  *
- * No `pendo.*` runtime is invoked; `data-pendo-id` markup is inert until
- * Phase 6 retrofits the agent.
+ * Pendo Track Events `signup_completed` / `signup_failed` are emitted via the
+ * guarded `trackPendoEvent` helper (no-op when the agent is not loaded).
  */
 
 import { useState } from 'react'
@@ -29,6 +29,7 @@ import { Stack, Group, Title, Alert } from '@mantine/core'
 import { IconAlertCircle } from '@tabler/icons-react'
 import { Select, NumberInput, MultiSelect, Button } from '../../../ui/primitives'
 import { PENDO_IDS } from '../../../pendo/PENDO_IDS'
+import { trackPendoEvent } from '../../../pendo/track'
 import {
   step1Schema,
   step2Schema,
@@ -101,6 +102,21 @@ export function Step4PreferencesPage(): React.JSX.Element {
 
   const onSubmit = form.handleSubmit(async (step4Values) => {
     setSubmitError(null)
+
+    // Pendo Track Event: the final wizard step failed after submit. Fired
+    // alongside every setSubmitError call so the failure reason is captured
+    // (the user stays on /signup/preferences, so no page view marks it).
+    const trackSignupFailed = (
+      failureReason: 'generic_failure' | 'duplicate_email' | 'duplicate_username',
+    ) => {
+      trackPendoEvent('signup_failed', {
+        failureReason,
+        primaryUseCase: step4Values.primaryUseCase,
+        teamSize: step4Values.teamSize,
+        planTier: readWizardDraft().step3?.planTier ?? null,
+      })
+    }
+
     try {
       // Defense in depth — re-read the draft and re-validate every prior step
       // before write. Catches the race where a user opens DevTools mid-wizard
@@ -134,10 +150,12 @@ export function Step4PreferencesPage(): React.JSX.Element {
       // duplicate would write a second visitor that findVisitorByEmail
       // silently shadows. Surface as a form-level Alert and abort.
       if (findVisitorByEmail(s1.email)) {
+        trackSignupFailed('duplicate_email')
         setSubmitError('duplicate_email')
         return
       }
       if (findVisitorByUsername(s1.username)) {
+        trackSignupFailed('duplicate_username')
         setSubmitError('duplicate_username')
         return
       }
@@ -173,6 +191,21 @@ export function Step4PreferencesPage(): React.JSX.Element {
       // halo:v1:session and updates the in-memory store atomically.
       useAuthStore.getState().signInFromVisitor(visitor, workspace)
 
+      // Pendo Track Event: signup conversion. Fires once per completed wizard
+      // (createVisitor + createWorkspace succeeded, session written), before
+      // the redirect, carrying the onboarding answers from every step.
+      trackPendoEvent('signup_completed', {
+        primaryUseCase: step4Values.primaryUseCase,
+        teamSize: step4Values.teamSize,
+        topGoals: step4Values.topGoals,
+        topGoalsCount: step4Values.topGoals.length,
+        role: s2.role,
+        yearsExperience: s2.yearsExperience,
+        companySize: s3.companySize,
+        industry: s3.industry,
+        planTier: s3.planTier,
+      })
+
       // Clear the wizard draft — the plaintext-password retention window
       // (T-02-17) ends here. sessionStorage[halo:v1:signup:draft] is removed.
       clearWizardDraft()
@@ -186,6 +219,7 @@ export function Step4PreferencesPage(): React.JSX.Element {
       // and stay on /signup/preferences. The wizard draft is intentionally NOT
       // cleared on failure — user can retry by clicking Create account again.
       console.error('[signup] completion failed:', err)
+      trackSignupFailed('generic_failure')
       setSubmitError('generic_failure')
     }
   })

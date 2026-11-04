@@ -14,7 +14,13 @@ import { Button, Textarea } from '../ui/primitives'
 import { PENDO_IDS } from '../pendo/PENDO_IDS'
 import { useAuthStore } from '../auth'
 import { listMessages, appendMessage, clearMessages } from './chatRepo'
-import { streamChatReply, describeChatError } from './claudeClient'
+import {
+  streamChatReply,
+  describeChatError,
+  ChatNotConfiguredError,
+  ChatProxyError,
+} from './claudeClient'
+import { trackPendoEvent } from '../pendo/track'
 import type { ChatMessage } from './types'
 
 interface ChatPanelProps {
@@ -57,13 +63,37 @@ export function ChatPanel({ onClose }: ChatPanelProps): React.JSX.Element {
 
     setIsSending(true)
     setStreamingText('')
+    const startedAt = Date.now()
     try {
       const fullReply = await streamChatReply(nextHistory, (chunk) =>
         setStreamingText((prev) => (prev ?? '') + chunk),
       )
       const assistantMessage = appendMessage(workspaceId, { role: 'assistant', content: fullReply })
       setMessages((prev) => [...prev, assistantMessage])
+      // Pendo Track Event: the streamed reply finished successfully.
+      trackPendoEvent('assistant_response_completed', {
+        outcome: 'success',
+        errorType: null,
+        conversationLength: nextHistory.length,
+        promptLength: text.length,
+        replyLength: fullReply.length,
+        durationMs: Date.now() - startedAt,
+      })
     } catch (err) {
+      // Pendo Track Event: the exchange failed — classify the error type.
+      trackPendoEvent('assistant_response_completed', {
+        outcome: 'error',
+        errorType:
+          err instanceof ChatProxyError
+            ? err.errorType
+            : err instanceof ChatNotConfiguredError
+              ? 'not_configured'
+              : 'unknown',
+        conversationLength: nextHistory.length,
+        promptLength: text.length,
+        replyLength: 0,
+        durationMs: Date.now() - startedAt,
+      })
       const description = describeChatError(err)
       setErrorText(description)
       const errorMessage = appendMessage(workspaceId, {

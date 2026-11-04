@@ -58,7 +58,9 @@ import {
   TASK_PRIORITY_LABELS,
 } from '../labels'
 import type { Task, TaskFormValues, Assignee } from '../types'
-import { createTask, updateTask } from '../tasksRepo'
+import { createTask, listTasks, updateTask } from '../tasksRepo'
+import { trackTaskCompleted } from '../trackTaskCompleted'
+import { trackPendoEvent } from '../../pendo/track'
 import { getAssigneeOptions } from '../assigneeOptions'
 import type { Visitor } from '../../auth/types'
 
@@ -187,7 +189,18 @@ export function TaskFormModal({
 
   const onSubmit = form.handleSubmit((values) => {
     if (mode === 'create') {
+      const taskCountBefore = listTasks(workspaceId).length
       createTask(workspaceId, { ...values, completedAt: null })
+      // Pendo Track Event: a new task was saved (runs only after Zod
+      // validation passed, unlike the 'Create task' Feature click).
+      trackPendoEvent('task_created', {
+        status: values.status,
+        priority: values.priority,
+        hasDueDate: values.dueDate !== null,
+        hasDescription: values.description.trim().length > 0,
+        assignedToSelf: values.assignee.id === visitor.id,
+        taskCountBefore,
+      })
       notifications.show({
         title: 'Task created',
         message: '',
@@ -196,7 +209,35 @@ export function TaskFormModal({
         autoClose: 3000,
       })
     } else if (initialTask) {
-      updateTask(workspaceId, initialTask.id, values)
+      const updated = updateTask(workspaceId, initialTask.id, values)
+      if (updated) {
+        // Pendo Track Event: edits were saved. changedFields is derived by
+        // comparing the submitted values with the task as it was opened.
+        const assigneeChanged = values.assignee.id !== initialTask.assignee.id
+        const dueDateChanged = values.dueDate !== initialTask.dueDate
+        const changedFields = [
+          values.title !== initialTask.title ? 'title' : null,
+          values.description !== initialTask.description ? 'description' : null,
+          values.status !== initialTask.status ? 'status' : null,
+          values.priority !== initialTask.priority ? 'priority' : null,
+          assigneeChanged ? 'assignee' : null,
+          dueDateChanged ? 'dueDate' : null,
+        ].filter((field): field is string => field !== null)
+        trackPendoEvent('task_updated', {
+          changedFields,
+          previousStatus: initialTask.status,
+          newStatus: values.status,
+          previousPriority: initialTask.priority,
+          newPriority: values.priority,
+          assigneeChanged,
+          dueDateChanged,
+        })
+        // Pendo Track Event: completion via a status change in the modal —
+        // only on the non-done → done edge where the repo stamps completedAt.
+        if (initialTask.status !== 'done' && updated.status === 'done') {
+          trackTaskCompleted(initialTask, updated, 'edit_modal')
+        }
+      }
       notifications.show({
         title: 'Changes saved',
         message: '',

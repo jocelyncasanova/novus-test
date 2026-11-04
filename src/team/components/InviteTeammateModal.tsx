@@ -34,7 +34,8 @@ import { notifications } from '@mantine/notifications'
 import { IconCheck } from '@tabler/icons-react'
 import { TextInput, Select, Button } from '../../ui/primitives'
 import { PENDO_IDS } from '../../pendo/PENDO_IDS'
-import { createTeammate, findTeammateByEmail } from '../teamsRepo'
+import { trackPendoEvent } from '../../pendo/track'
+import { createTeammate, findTeammateByEmail, listTeammates } from '../teamsRepo'
 
 export type InviteTeammateModalProps = {
   opened: boolean
@@ -42,6 +43,8 @@ export type InviteTeammateModalProps = {
   /** Parent bumps refreshKey after success so the table re-reads teammates. */
   onSuccess: () => void
   workspaceId: string
+  /** Entry point that opened the modal — reported on the `teammate_invited` Track Event. */
+  invitedFrom?: 'header' | 'empty_state'
 }
 
 export function InviteTeammateModal({
@@ -49,6 +52,7 @@ export function InviteTeammateModal({
   onClose,
   onSuccess,
   workspaceId,
+  invitedFrom = 'header',
 }: InviteTeammateModalProps): React.JSX.Element {
   // Local-form-schema per Phase 4 D-15. Defined inside useMemo so the closure
   // captures the current workspaceId for the .superRefine dedupe check (D-03).
@@ -108,6 +112,14 @@ export function InviteTeammateModal({
       lastActiveAt: null,
       invitedAt: new Date().toISOString(),
       avatar: null,
+    })
+
+    // Pendo Track Event: the invite was saved (runs only after the email +
+    // duplicate-teammate validation passed, unlike the 'Send invite' click).
+    trackPendoEvent('teammate_invited', {
+      workspaceRole: values.workspaceRole,
+      teamSizeAfterInvite: listTeammates(workspaceId).length,
+      invitedFrom,
     })
 
     notifications.show({

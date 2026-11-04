@@ -118,7 +118,17 @@ export function ReportsPage(): React.JSX.Element {
           variant="outline"
           leftSection={<IconDownload size={16} />}
           pendoId={PENDO_IDS.reports.csvExport}
-          onClick={() => exportTasksToCsv(filteredTasks)}
+          onClick={() =>
+            exportTasksToCsv(filteredTasks, {
+              dateRangeDays:
+                dateRange[0] && dateRange[1]
+                  ? dayjs(dateRange[1]).diff(dayjs(dateRange[0]), 'day')
+                  : null,
+              assigneeFilter:
+                assignee === 'all' ? 'all' : assignee === visitor.id ? 'self' : 'other',
+              statusFilter,
+            })
+          }
           disabled={filteredTasks.length === 0}
         >
           Export CSV

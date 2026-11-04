@@ -38,6 +38,7 @@ import { notifications } from '@mantine/notifications'
 import { IconCheck, IconAlertCircle } from '@tabler/icons-react'
 import { TextInput, Select, Button } from '../ui/primitives'
 import { PENDO_IDS } from '../pendo/PENDO_IDS'
+import { trackPendoEvent } from '../pendo/track'
 import {
   WorkspaceSchema,
   updateWorkspace,
@@ -95,6 +96,18 @@ export function WorkspaceTab(): React.JSX.Element | null {
   const onSubmit = form.handleSubmit((values) => {
     const updated = updateWorkspace(workspace.id, values)
     if (updated) {
+      // Pendo Track Event: workspace settings saved. `workspace` is still the
+      // pre-save snapshot here, so it supplies the previous values.
+      const changedFields = (
+        ['companyName', 'companySize', 'industry', 'planTier'] as const
+      ).filter((field) => values[field] !== workspace[field])
+      trackPendoEvent('workspace_settings_updated', {
+        changedFields: [...changedFields],
+        previousPlanTier: workspace.planTier,
+        newPlanTier: updated.planTier,
+        companySize: updated.companySize,
+        industry: updated.industry,
+      })
       useAuthStore.setState({ currentWorkspace: updated })
       notifications.show({
         title: 'Workspace saved',

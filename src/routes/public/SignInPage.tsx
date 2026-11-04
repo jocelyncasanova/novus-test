@@ -31,9 +31,10 @@
  * SignInPage is NOT a child of `SignupShell` — it has its own Container and
  * is not part of the wizard (no Stepper, no draft state, no Back button).
  *
- * The page does NOT invoke any Pendo runtime API — Phase 6 retrofits the
- * agent's identify-on-success call onto the success branch. Every interactive
- * control sources `pendoId` from `PENDO_IDS.signin.*` (the typed `pendoId`
+ * The only Pendo runtime call is the `sign_in_failed` Track Event on the
+ * failure branch (via the guarded `trackPendoEvent` helper) — Phase 6
+ * retrofits the agent's identify-on-success call onto the success branch.
+ * Every interactive control sources `pendoId` from `PENDO_IDS.signin.*` (the typed `pendoId`
  * prop on the wrapped primitives enforces this at the type level).
  */
 
@@ -45,6 +46,7 @@ import { Container, Stack, Paper, Title, Text, Alert } from '@mantine/core'
 import { IconAlertCircle } from '@tabler/icons-react'
 import { TextInput, PasswordInput, Button, Anchor } from '../../ui/primitives'
 import { PENDO_IDS } from '../../pendo/PENDO_IDS'
+import { trackPendoEvent } from '../../pendo/track'
 import { signinSchema, type SigninValues, useAuthStore } from '../../auth'
 
 export function SignInPage(): React.JSX.Element {
@@ -78,6 +80,9 @@ export function SignInPage(): React.JSX.Element {
     // defensive "missing workspace" branch into one variant — username
     // enumeration mitigation T-02-45 at the API surface).
     console.log('Sign in failed:', result.reason)
+    // Pendo Track Event: failed credential check (no page change occurs, and
+    // the Sign in Feature click fires identically on success and failure).
+    trackPendoEvent('sign_in_failed', { reason: result.reason })
     setCredError(result.reason)
   })
 

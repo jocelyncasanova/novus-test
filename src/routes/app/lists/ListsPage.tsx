@@ -43,6 +43,7 @@ import { Button } from '../../../ui/primitives'
 import { PENDO_IDS } from '../../../pendo/PENDO_IDS'
 import { useAuthStore } from '../../../auth/authStore'
 import { listTasks, updateTask, deleteTask } from '../../../tasks/tasksRepo'
+import { trackTaskCompleted } from '../../../tasks/trackTaskCompleted'
 import type { Task } from '../../../tasks/types'
 import { TaskTable } from '../../../tasks/components/TaskTable'
 import { TaskFiltersBar } from '../../../tasks/components/TaskFiltersBar'
@@ -144,11 +145,16 @@ export function ListsPage(): React.JSX.Element {
               onEdit={(task) => setEditTask(task)}
               onDelete={(task) => setDeleteTarget(task)}
               onToggleComplete={(task, nextDone) => {
-                updateTask(workspaceId, task.id, {
+                const updated = updateTask(workspaceId, task.id, {
                   // Off-toggle: restore prior non-done status if recorded;
                   // fall back to 'todo' for legacy tasks without prevStatus.
                   status: nextDone ? 'done' : (task.prevStatus ?? 'todo'),
                 })
+                // Pendo Track Event: completion via the row checkbox — only on
+                // the non-done → done edge (un-completing does not fire).
+                if (nextDone && updated && task.status !== 'done') {
+                  trackTaskCompleted(task, updated, 'list_checkbox')
+                }
                 refresh()
               }}
             />

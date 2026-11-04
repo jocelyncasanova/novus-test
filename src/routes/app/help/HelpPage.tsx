@@ -18,13 +18,20 @@
  * The flat sibling shape is explicitly accepted per UI-SPEC line 840.
  */
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Stack, Title } from '@mantine/core'
 import { useDebouncedValue } from '@mantine/hooks'
 import { listHelpArticles } from '../../../help/helpArticles'
 import { HelpSearchInput } from '../../../help/components/HelpSearchInput'
 import { HelpList } from '../../../help/components/HelpList'
 import { HelpNoResultsState } from '../../../help/components/HelpNoResultsState'
+import { trackPendoEvent } from '../../../pendo/track'
+
+// Last debounced query reported to Pendo. Module-level (not a ref) so a
+// StrictMode double-invoked effect or a remount cannot re-report the same
+// settled query; reset whenever the query is cleared so a repeat search
+// after clearing still counts.
+let lastTrackedHelpQuery = ''
 
 export function HelpPage(): React.JSX.Element {
   const [query, setQuery] = useState('')
@@ -43,6 +50,24 @@ export function HelpPage(): React.JSX.Element {
       return haystack.includes(needle)
     })
   }, [allArticles, debouncedQuery])
+
+  // Pendo Track Event: the debounced query settled to a non-empty value and
+  // the filtered results were computed. Zero-result searches reveal help gaps.
+  useEffect(() => {
+    const settledQuery = debouncedQuery.trim()
+    if (settledQuery === '') {
+      lastTrackedHelpQuery = ''
+      return
+    }
+    if (settledQuery === lastTrackedHelpQuery) return
+    lastTrackedHelpQuery = settledQuery
+    trackPendoEvent('help_search_performed', {
+      query: settledQuery.slice(0, 100),
+      resultsCount: filtered.length,
+      hasResults: filtered.length > 0,
+      totalArticles: allArticles.length,
+    })
+  }, [debouncedQuery, filtered, allArticles])
 
   return (
     <Stack gap="lg">

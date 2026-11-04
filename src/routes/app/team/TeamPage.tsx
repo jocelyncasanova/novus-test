@@ -27,7 +27,17 @@ import { listTeammates, updateTeammate } from '../../../team/teamsRepo'
 import { TeamTable } from '../../../team/components/TeamTable'
 import { TeamEmptyState } from '../../../team/components/TeamEmptyState'
 import { InviteTeammateModal } from '../../../team/components/InviteTeammateModal'
+import { trackPendoEvent } from '../../../pendo/track'
 import type { WorkspaceRole } from '../../../team/types'
+
+// Permission rank used to classify a role change as a promotion or demotion
+// on the `teammate_role_changed` Track Event (higher = more permissions).
+const ROLE_RANK: Record<WorkspaceRole, number> = {
+  Viewer: 0,
+  Member: 1,
+  Admin: 2,
+  Owner: 3,
+}
 
 export function TeamPage(): React.JSX.Element {
   const visitor = useAuthStore((s) => s.currentVisitor)
@@ -49,7 +59,19 @@ export function TeamPage(): React.JSX.Element {
   if (!workspaceId || !visitor || !workspace) return <></>
 
   const handleRoleChange = (teammateId: string, nextRole: WorkspaceRole) => {
-    updateTeammate(workspaceId, teammateId, { workspaceRole: nextRole })
+    const previous = teammates.find((t) => t.id === teammateId)
+    const updated = updateTeammate(workspaceId, teammateId, { workspaceRole: nextRole })
+    // Pendo Track Event: the new role was saved. Skipped when the role did not
+    // actually change so re-selecting the same option does not count.
+    if (updated && previous && previous.workspaceRole !== nextRole) {
+      trackPendoEvent('teammate_role_changed', {
+        previousRole: previous.workspaceRole,
+        newRole: nextRole,
+        teammateStatus: previous.status,
+        changeDirection:
+          ROLE_RANK[nextRole] > ROLE_RANK[previous.workspaceRole] ? 'promotion' : 'demotion',
+      })
+    }
     notifications.show({
       title: 'Role updated',
       message: '',
@@ -93,6 +115,9 @@ export function TeamPage(): React.JSX.Element {
         onClose={() => setInviteOpen(false)}
         onSuccess={refresh}
         workspaceId={workspaceId}
+        // The header button only renders when teammates exist; otherwise the
+        // empty-state CTA is the only entry point.
+        invitedFrom={teammates.length === 0 ? 'empty_state' : 'header'}
       />
     </Stack>
   )

@@ -31,6 +31,20 @@
 import dayjs from 'dayjs'
 import type { Task } from '../tasks/types'
 import { TASK_STATUS_LABELS, TASK_PRIORITY_LABELS } from '../tasks/labels'
+import { trackPendoEvent } from '../pendo/track'
+
+/**
+ * Report filters behind an export — reported on the `report_exported` Pendo
+ * Track Event. Optional so `exportTasksToCsv` stays usable without context.
+ */
+export type CsvExportContext = {
+  /** Span of the date-range filter in days, or null when either bound is open. */
+  dateRangeDays: number | null
+  /** 'all', 'self' (the signed-in visitor), or 'other' (a specific teammate). */
+  assigneeFilter: 'all' | 'self' | 'other'
+  /** Selected statuses (empty = match-all). */
+  statusFilter: string[]
+}
 
 /**
  * RFC 4180 quoter: wrap `value` in `"..."` iff it contains a comma, newline, or
@@ -71,7 +85,7 @@ export function toCsv(rows: Task[]): string {
  * `disabled={tasks.length === 0}` on the trigger button per D-23 (UI-SPEC
  * line 700).
  */
-export function exportTasksToCsv(tasks: Task[]): void {
+export function exportTasksToCsv(tasks: Task[], context?: CsvExportContext): void {
   const csv = toCsv(tasks)
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
   const url = URL.createObjectURL(blob)
@@ -84,4 +98,13 @@ export function exportTasksToCsv(tasks: Task[]): void {
   a.click()
   document.body.removeChild(a)
   URL.revokeObjectURL(url)
+
+  // Pendo Track Event: the CSV was built and its download started.
+  trackPendoEvent('report_exported', {
+    rowCount: tasks.length,
+    fileSizeBytes: blob.size,
+    dateRangeDays: context?.dateRangeDays ?? null,
+    assigneeFilter: context?.assigneeFilter ?? null,
+    statusFilter: context?.statusFilter ?? null,
+  })
 }
