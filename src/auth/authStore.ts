@@ -126,6 +126,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   signOut: async () => {
     get().clearSession()
     clearWizardDraft()
+    // Reset Pendo to a fresh anonymous visitor so the next user is not
+    // tracked under this user's identity. Guarded because the install
+    // snippet's pre-load stub does not define clearSession, and the agent
+    // global does not exist in the Node smoke tests.
+    if (typeof pendo !== 'undefined' && typeof pendo.clearSession === 'function') {
+      pendo.clearSession()
+    }
     return Promise.resolve()
   },
 }))
