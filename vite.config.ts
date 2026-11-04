@@ -2,6 +2,8 @@ import { defineConfig, loadEnv, type Connect } from 'vite'
 import react from '@vitejs/plugin-react'
 import Anthropic from '@anthropic-ai/sdk'
 import { CHAT_MODEL } from './src/chat/chatModel'
+import { copyFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 
 const CHAT_SYSTEM_PROMPT =
   'You are Halo Assistant, a friendly in-app AI assistant embedded in Halo, a project/task ' +
@@ -97,11 +99,33 @@ function chatProxyPlugin(apiKey: string | undefined) {
   }
 }
 
+/**
+ * GitHub Pages has no rewrite/redirect mechanism — a hard refresh on a deep
+ * link (e.g. `/novus-test/app/reports`) is served whatever file Pages
+ * finds at that path, and Pages falls back to `404.html` for any unmatched
+ * path. Copying the built `index.html` to `404.html` makes that fallback
+ * boot the SPA instead of showing a bare error page.
+ */
+function pagesFallbackPlugin() {
+  let outDir = ''
+  return {
+    name: 'halo-pages-404-fallback',
+    apply: 'build' as const,
+    configResolved(config: import('vite').ResolvedConfig) {
+      outDir = resolve(config.root, config.build.outDir)
+    },
+    closeBundle() {
+      copyFileSync(resolve(outDir, 'index.html'), resolve(outDir, '404.html'))
+    },
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   return {
-    plugins: [react(), chatProxyPlugin(env.ANTHROPIC_API_KEY)],
+    base: process.env.GITHUB_ACTIONS ? '/novus-test/' : '/',
+    plugins: [react(), chatProxyPlugin(env.ANTHROPIC_API_KEY), pagesFallbackPlugin()],
     server: {
       port: 3030,
     },

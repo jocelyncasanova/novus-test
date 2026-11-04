@@ -47,7 +47,7 @@
  * user-observable state at this exact moment (before the hard reload) is:
  * zero `halo:v1:*` keys remain in localStorage. The wipe contract is honored.
  *
- * Immediately after, `window.location.href = '/'` triggers a hard reload.
+ * Immediately after, `window.location.href = import.meta.env.BASE_URL` triggers a hard reload.
  * The reload re-runs the app boot sequence: `src/main.tsx` calls
  * `runMigrations()` (from `src/storage/migrations.ts`) BEFORE React mounts.
  * `runMigrations()` calls `peekRaw(K.meta())` — finds `null` — and writes
@@ -118,7 +118,7 @@ export function ResetDemoDataModal({ opened, onClose }: ResetDemoDataModalProps)
     //    and it lives outside the halo:v* envelope by design.
 
     // 4. Hard reload — re-runs boot sequence with clean state.
-    window.location.href = '/'
+    window.location.href = import.meta.env.BASE_URL
   }
 
   return (
