@@ -12,9 +12,11 @@ import {
 import { IconX, IconTrash, IconSend, IconAlertCircle } from '@tabler/icons-react'
 import { Button, Textarea } from '../ui/primitives'
 import { PENDO_IDS } from '../pendo/PENDO_IDS'
+import { HALO_ASSISTANT_AGENT_ID, trackAgent } from '../pendo/trackAgent'
 import { useAuthStore } from '../auth'
 import { listMessages, appendMessage, clearMessages } from './chatRepo'
 import { streamChatReply, describeChatError } from './claudeClient'
+import { CHAT_MODEL } from './chatModel'
 import type { ChatMessage } from './types'
 
 interface ChatPanelProps {
@@ -55,6 +57,18 @@ export function ChatPanel({ onClose }: ChatPanelProps): React.JSX.Element {
     const nextHistory = [...history, userMessage]
     setMessages(nextHistory)
 
+    // A conversation spans from the first persisted message until "New
+    // conversation" clears history, so the first message's ID identifies it.
+    const conversationId = nextHistory[0].id
+    trackAgent('prompt', {
+      agentId: HALO_ASSISTANT_AGENT_ID,
+      conversationId,
+      messageId: userMessage.id,
+      content: text,
+      suggestedPrompt: false,
+      fileUploaded: false,
+    })
+
     setIsSending(true)
     setStreamingText('')
     try {
@@ -63,6 +77,13 @@ export function ChatPanel({ onClose }: ChatPanelProps): React.JSX.Element {
       )
       const assistantMessage = appendMessage(workspaceId, { role: 'assistant', content: fullReply })
       setMessages((prev) => [...prev, assistantMessage])
+      trackAgent('agent_response', {
+        agentId: HALO_ASSISTANT_AGENT_ID,
+        conversationId,
+        messageId: assistantMessage.id,
+        content: fullReply,
+        modelUsed: CHAT_MODEL,
+      })
     } catch (err) {
       const description = describeChatError(err)
       setErrorText(description)
